@@ -1,0 +1,19 @@
+---
+title: "train_tag"
+author: "Patricia Yin"
+date: "09/02/2021"
+output: html_document
+---
+
+I. Exploratory Data Analysis
+
+load and view train_tag.csv dataset provided by a Chinese bank in a modelling competition.
+
+```{r}
+tag <- read.csv("train_tag.csv")
+dim(tag)[1]
+colnames(tag)
+rdm.index <- sample(dim(tag)[1], size=6)
+tag[rdm.index,]
+```
+
