@@ -26,16 +26,6 @@ summary(tag)
 ```{r}
 #put categorical variables as fators
 tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)] <- lapply(tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)], as.factor)
-
-#levels with empty name recoded as NA
-tag$atdd_type[tag$atdd_type != "0" & tag$atdd_type != "1"] <- NA
-tag$atdd_type <- droplevels(tag$atdd_type)
-tag$deg_cd[tag$deg_cd == ""] <- NA
-tag$deg_cd <- droplevels(tag$deg_cd)
-summary(tag$edu_deg_cd)
-tag$edu_deg_cd[tag$edu_deg_cd == ""] <- NA
-tag$edu_deg_cd <- droplevels(tag$edu_deg_cd)
-summary(tag)
 ```
 
 columns with -1:
@@ -102,6 +92,11 @@ dat1$tot_ast_lvl_cd <- as.factor(dat1$tot_ast_lvl_cd)
 hist(tag$pot_ast_lvl_cd)
 #code the variable as a factor
 dat1$pot_ast_lvl_cd <- as.factor(dat1$pot_ast_lvl_cd)
+
+#code "" levels as "-1"
+levels(tag$atdd_type) <- c("-1", "-1", "0", "1")
+levels(tag$deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "Z")
+levels(tag$edu_deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "F", "G", "J", "K", "L", "M", "Z")
 ```
 
 modify response variable:
@@ -128,10 +123,11 @@ identify our target group: married women under 35
 
 ```{r}
 #investigate mrg_situ_cd
-
 ggplot(dat1, aes(x=mrg_situ_cd, y=age)) + geom_boxplot()
+attach(dat1)
 mean(age[mrg_situ_cd=="A" & gdr_cd == "M"])
 mean(age[mrg_situ_cd=="B" & gdr_cd == "M"])
+detach()
 #assume A = single, B = married
 
 #subset our target group
@@ -158,11 +154,6 @@ Some variables are highly skewed
 - l12_mon_gld_buy_whl_tms
 
 ```{r}
-#remove variables
-flag
-dnl_mbl_bnk_ind
-dnl_bind_cmb_lif_ind
-
 #investigate some outliers in variables
 which.max(dat.t$cur_credit_cnt) #143
 dat.t[143,]
@@ -170,15 +161,100 @@ which.max(dat.t$his_lng_ovd_day) #298
 dat.t[298,]
 
 #investigate the highly skewed variables
+skew.df <- subset(dat.t, select = c(bk1_cur_year_mon_avg_agn_amt_cd, l12mon_buy_fin_mng_whl_tms, 
+                                    l12_mon_fnd_buy_whl_tms, l12_mon_insu_buy_whl_tms, l12_mon_gld_buy_whl_tms,
+                                    pl_crd_lmt_cd, good))
+
+#combine adjacent levels with similar Weight of Evidence
+check_woe <- function(var) {
+  tab.var <- table(as.factor(var), good)
+  df.var <- as.data.frame.matrix(tab.var)
+  df.prop.var <- as.data.frame.matrix(prop.table(tab.var, 1))
+  df.var$woe <- log(df.prop.var$"1" / df.prop.var$"0")
+  return(df.var)
+}
+
+attach(skew.df)
+check_woe(bk1_cur_year_mon_avg_agn_amt_cd)
+
+check_woe(l12mon_buy_fin_mng_whl_tms)
+
+check_woe(l12_mon_fnd_buy_whl_tms)
+
+check_woe(l12_mon_insu_buy_whl_tms)
+#too few people buy insurance （8 people buy once)
+
+check_woe(l12_mon_gld_buy_whl_tms)
+#too few people buy gold (5 people buy >= 1 time)
+
+check_woe(pl_crd_lmt_cd)
+detach()
 ```
 
 
+```{r}
+#drop levels
+dat.t <- droplevels(dat.t)
+summary(dat.t)
+
+#select variables which reflect customer background and behaviour
+dat.tf <- subset(dat.t, select = c(cur_debit_cnt, cur_credit_cnt, cur_debit_min_opn_dt_cnt, cur_credit_min_opn_dt_cnt, cur_debit_crd_lvl, hld_crd_card_grd_cd, crd_card_act_ind, l1y_crd_card_csm_amt_dlm_cd, atdd_type, perm_crd_lmt_cd, acdm_deg_cd, job_year, ic_ind, fr_or_sh_ind,
+dnl_bind_cmb_lif_ind,
+hav_car_grp_ind,
+hav_hou_grp_ind,
+l6mon_daim_aum_cd,
+tot_ast_lvl_cd,
+pot_ast_lvl_cd,
+l12mon_buy_fin_mng_whl_tms,
+l12_mon_fnd_buy_whl_tms,
+l12_mon_insu_buy_whl_tms,
+l12_mon_gld_buy_whl_tms,
+loan_act_ind,
+pl_crd_lmt_cd,
+good))
+summary(dat.tf)
+```
+
+edu_deg_cd, acdm_deg_cd, deg_cd are similar ideas. pick acdm_deg_cd because it has fewer levels than edu_deg_cd and more even distribution than deg_cd
 
 
-II. Good/Bad Scorecard
+II. From Initial to Final Model
 
 ```{r}
-#Weight of evidence
-dat$flag
+#raw model
+glm.f <- glm(good~., data=dat.tf, family="binomial")
+summary(glm.f)
+
+#classification table
+ct.op <- function(predicted, observed) {
+  df.op <- data.frame(predicted = predicted, observed = observed)
+  # create a table
+  op.tab <- table(df.op)
+  # use the prop.table function to obtain the rows we need and stack them on
+  # top of each other with rbind
+  op.tab <- rbind(op.tab, c(round(prop.table(op.tab, 2)[1, 1], 2), round((prop.table(op.tab,2)[2, 2]), 2)))
+  # name the rows
+  rownames(op.tab) <- c("pred=0", "pred=1", "%corr")
+  # name the columns
+  colnames(op.tab) <- c("obs=0", "obs=1")
+  # return the table
+  op.tab
+}
+ct.op(as.numeric(glm.f$fitted.values>0.5), dat.tf$good)
+
+#automatic model selection by AIC
+glm.n <- glm(good~1, data=dat.tf, family="binomial")
+
+glm.fwd <- step(glm.n, scope = list(lower = glm.n, upper = glm.f), 
+             direction = "forward", trace = 0)
+ct.op(as.numeric(glm.fwd$fitted.values>0.5), dat.tf$good)
+
+glm.bwd <- step(glm.f, direction = "backward", trace = 0)
+summary(glm.bwd)
+ct.op(as.numeric(glm.bwd$fitted.values>0.5), dat.tf$good)
+
+glm.bi <- step(glm.f, direction = "both", trace = 0)
+summary(glm.bi)
+ct.op(as.numeric(glm.bi$fitted.values>0.5), dat.tf$good)
 ```
 
