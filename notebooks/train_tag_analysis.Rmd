@@ -13,7 +13,7 @@ load and view train_tag.csv dataset provided by a Chinese bank in a modelling co
 library(tidyverse)
 library(ggplot2)
 
-tag <- read.csv("train_tag.csv")
+tag <- read.csv("../data/train_tag.csv")
 dim(tag)[1]
 colnames(tag)
 rdm.index <- sample(dim(tag)[1], size=6)
