@@ -5,15 +5,98 @@ date: "09/02/2021"
 output: html_document
 ---
 
-I. Exploratory Data Analysis
+# I. Exploratory Data Analysis
 
 load and view train_tag.csv dataset provided by a Chinese bank in a modelling competition.
 
 ```{r}
+library(tidyverse)
+library(ggplot2)
+
 tag <- read.csv("train_tag.csv")
 dim(tag)[1]
 colnames(tag)
 rdm.index <- sample(dim(tag)[1], size=6)
 tag[rdm.index,]
+summary(tag)
+```
+
+## 1.1 Data cleaning and prepocessing
+
+modify response variable
+
+```{r}
+#response variable
+hist(tag$ovd_30d_loan_tot_cnt)
+#default for loan + credit card 
+hist(tag$his_lng_ovd_day)
+#default for credit card (customers without loan)
+hist(tag$his_lng_ovd_day[tag$loan_act_ind==0])
+
+#exclude customers with 
+```
+
+```{r}
+#put categorical variables as fators
+tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)] <- lapply(tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)], as.factor)
+
+#levels with empty name recoded as NA
+tag$atdd_type[tag$atdd_type != "0" & tag$atdd_type != "1"] <- NA
+tag$atdd_type <- droplevels(tag$atdd_type)
+tag$deg_cd[tag$deg_cd == ""] <- NA
+tag$deg_cd <- droplevels(tag$deg_cd)
+summary(tag$edu_deg_cd)
+tag$edu_deg_cd[tag$edu_deg_cd == ""] <- NA
+tag$edu_deg_cd <- droplevels(tag$edu_deg_cd)
+summary(tag)
+```
+
+columns with -1:
+frs_agn_dt_cnt, fin_rsk_ases_grd_cd, confirm_rsk_ases_lvl_typ_cd, tot_ast_lvl_cd,   pot_ast_lvl_cd, hld_crd_card_grd_cd, perm_crd_lmt_cd,  cur_credit_min_opn_dt_cnt
+
+Treat them as missing values and remove rows with -1 in any columns from the dataset
+
+```{r}
+#try to remove -1
+colnames(tag)
+neg_col_index <- c(17, 19, 20, 23, 24, 34, 38, 42)
+dat <- tag
+for (i in 1:8) {
+  dat <- subset(dat, dat[neg_col_index[i]] != -1)
+}
+
+dim(dat) 
+dim(tag)
+```
+
+The reduced dataset is only 1/10 of the original one. Try to investigate why -1 was coded
+
+```{r}
+#check cur_credit_min_opn_dt_cnt
+hist(tag$cur_credit_min_opn_dt_cnt)
+summary(tag$cur_credit_cnt)
+#remove rows with -1 in cur_credit_min_opn_dt_cnt
+dat1 <- subset(tag, cur_credit_min_opn_dt_cnt != -1)
+
+#check hld_crd_card_grd_cd
+hist(tag$hld_crd_card_grd_cd)
+#remove -1 in hld_crd_card_grd_cd
+dat1 <- subset(dat1, hld_crd_card_grd_cd != -1)
+
+#check perm_crd_lmt_cd
+hist(tag$perm_crd_lmt_cd)
+#remove -1 in perm_crd_lmt_cd
+dat1 <- subset(dat1, perm_crd_lmt_cd != -1)
+
+#check frs_agn_dt_cnt
+hist(tag$frs_agn_dt_cnt)
+```
+
+
+II. Good/Bad Scorecard
+
+```{r}
+#Weight of evidence
+dat$flag
 ```
 
