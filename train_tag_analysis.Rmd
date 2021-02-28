@@ -23,19 +23,6 @@ summary(tag)
 
 ## 1.1 Data cleaning and prepocessing
 
-modify response variable
-
-```{r}
-#response variable
-hist(tag$ovd_30d_loan_tot_cnt)
-#default for loan + credit card 
-hist(tag$his_lng_ovd_day)
-#default for credit card (customers without loan)
-hist(tag$his_lng_ovd_day[tag$loan_act_ind==0])
-
-#exclude customers with 
-```
-
 ```{r}
 #put categorical variables as fators
 tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)] <- lapply(tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)], as.factor)
@@ -90,7 +77,102 @@ dat1 <- subset(dat1, perm_crd_lmt_cd != -1)
 
 #check frs_agn_dt_cnt
 hist(tag$frs_agn_dt_cnt)
+summary(tag$l6mon_agn_ind)
+length(which(tag$frs_agn_dt_cnt == -1)) #=18588
+length(which(tag$frs_agn_dt_cnt == -1 & tag$l6mon_agn_ind == 0)) #=18528
+#remove frs_agn_dt_cnt
+dat1 <- subset(dat1, select = - frs_agn_dt_cnt)
+
+#check fin_rsk_ases_grd_cd
+hist(tag$fin_rsk_ases_grd_cd)
+#code the variable as a factor
+dat1$fin_rsk_ases_grd_cd <- as.factor(dat1$fin_rsk_ases_grd_cd)
+
+#check confirm_rsk_ases_lvl_typ_cd
+hist(tag$confirm_rsk_ases_lvl_typ_cd)
+#code the variable as a factor
+dat1$confirm_rsk_ases_lvl_typ_cd <- as.factor(dat1$confirm_rsk_ases_lvl_typ_cd)
+
+#check tot_ast_lvl_cd
+hist(tag$tot_ast_lvl_cd)
+#code the variable as a factor
+dat1$tot_ast_lvl_cd <- as.factor(dat1$tot_ast_lvl_cd)
+
+#check pot_ast_lvl_cd
+hist(tag$pot_ast_lvl_cd)
+#code the variable as a factor
+dat1$pot_ast_lvl_cd <- as.factor(dat1$pot_ast_lvl_cd)
 ```
+
+modify response variable:
+
+```{r}
+#response variable
+hist(tag$ovd_30d_loan_tot_cnt)
+#default for loan + credit card 
+hist(tag$his_lng_ovd_day)
+length(which(tag$his_lng_ovd_day != 0))
+#default for credit card (customers without loan)
+hist(tag$his_lng_ovd_day[tag$loan_act_ind==0])
+
+#try to exclude customers with loan
+dat1.1 <- dat1[dat1$loan_act_ind==0,]
+length(which(dat1.1$his_lng_ovd_day > 0)) #only 3
+length(which(dat1.1$ovd_30d_loan_tot_cnt > 0)) #only 1 person
+
+#define Good as customers who never default
+dat1$good <- as.factor(ifelse(dat1$his_lng_ovd_day == 0, 1, 0)) #Good as 1, Bad as 0
+summary(dat1$good)
+```
+identify our target group: married women under 35
+
+```{r}
+#investigate mrg_situ_cd
+
+ggplot(dat1, aes(x=mrg_situ_cd, y=age)) + geom_boxplot()
+mean(age[mrg_situ_cd=="A" & gdr_cd == "M"])
+mean(age[mrg_situ_cd=="B" & gdr_cd == "M"])
+#assume A = single, B = married
+
+#subset our target group
+dat.t <- subset(dat1, age<=35 & gdr_cd=="F" & mrg_situ_cd=="B", select = -c(age, gdr_cd, mrg_situ_cd))
+dim(dat.t)
+summary(dat.t)
+
+```
+
+Some conclusions can be drawn from this summary:
+
+- our target group is very active in digital banking: they have all downloaded the bank's app (variable dnl_mbl_bnk_ind), 90.5% of them have downloaded the special app for credit card (variable dnl_bind_cmb_lif_ind)
+
+- 85.9% of them are active credit card users (indicated by the variable crd_card_act_ind). However, only 16.4% of them have loans with CMB.
+
+- 3.85% of them have defaulted, much smaller than the proportion that defaulted in the overall dataset (7.57%)
+
+Some variables are highly skewed
+
+- bk1_cur_year_mon_avg_agn_amt_cd
+- l12mon_buy_fin_mng_whl_tms
+- l12_mon_fnd_buy_whl_tms
+- l12_mon_insu_buy_whl_tms
+- l12_mon_gld_buy_whl_tms
+
+```{r}
+#remove variables
+flag
+dnl_mbl_bnk_ind
+dnl_bind_cmb_lif_ind
+
+#investigate some outliers in variables
+which.max(dat.t$cur_credit_cnt) #143
+dat.t[143,]
+which.max(dat.t$his_lng_ovd_day) #298
+dat.t[298,]
+
+#investigate the highly skewed variables
+```
+
+
 
 
 II. Good/Bad Scorecard
