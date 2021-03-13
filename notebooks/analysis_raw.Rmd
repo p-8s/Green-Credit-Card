@@ -1,0 +1,416 @@
+---
+title: "train_tag"
+author: "Patricia Yin"
+date: "09/02/2021"
+output: html_document
+---
+
+```{r eval=False}
+library(ggplot2)
+library(glmnet)
+library(tidyverse)
+library(randomForest)
+```
+
+
+# I. Exploratory Data Analysis
+
+load and view train_tag.csv dataset provided by a Chinese bank in a modelling competition.
+
+```{r}
+tag <- read.csv("../data/train_tag.csv")
+dim(tag)[1]
+colnames(tag)
+rdm.index <- sample(dim(tag)[1], size=6)
+tag[rdm.index,]
+summary(tag)
+```
+
+## 1.1 Data cleaning and prepocessing
+
+```{r}
+#put categorical variables as fators
+tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)] <- lapply(tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)], as.factor)
+```
+
+columns with -1:
+frs_agn_dt_cnt, fin_rsk_ases_grd_cd, confirm_rsk_ases_lvl_typ_cd, tot_ast_lvl_cd,   pot_ast_lvl_cd, hld_crd_card_grd_cd, perm_crd_lmt_cd,  cur_credit_min_opn_dt_cnt
+
+Treat them as missing values and remove rows with -1 in any columns from the dataset
+
+```{r}
+#try to remove -1
+colnames(tag)
+neg_col_index <- c(17, 19, 20, 23, 24, 34, 38, 42)
+dat <- tag
+for (i in 1:8) {
+  dat <- subset(dat, dat[neg_col_index[i]] != -1)
+}
+
+dim(dat) 
+dim(tag)
+```
+
+The reduced dataset is only 1/10 of the original one. Try to investigate why -1 was coded
+
+```{r}
+#check cur_credit_min_opn_dt_cnt
+hist(tag$cur_credit_min_opn_dt_cnt)
+summary(tag$cur_credit_cnt)
+#remove rows with -1 in cur_credit_min_opn_dt_cnt
+dat1 <- subset(tag, cur_credit_min_opn_dt_cnt != -1)
+
+#check hld_crd_card_grd_cd
+hist(tag$hld_crd_card_grd_cd)
+#remove -1 in hld_crd_card_grd_cd
+dat1 <- subset(dat1, hld_crd_card_grd_cd != -1)
+
+#check perm_crd_lmt_cd
+hist(tag$perm_crd_lmt_cd)
+#remove -1 in perm_crd_lmt_cd
+dat1 <- subset(dat1, perm_crd_lmt_cd != -1)
+
+#check frs_agn_dt_cnt
+hist(tag$frs_agn_dt_cnt)
+summary(tag$l6mon_agn_ind)
+length(which(tag$frs_agn_dt_cnt == -1)) #=18588
+length(which(tag$frs_agn_dt_cnt == -1 & tag$l6mon_agn_ind == 0)) #=18528
+#remove frs_agn_dt_cnt
+dat1 <- subset(dat1, select = - frs_agn_dt_cnt)
+
+#check fin_rsk_ases_grd_cd
+hist(tag$fin_rsk_ases_grd_cd)
+#code the variable as a factor
+dat1$fin_rsk_ases_grd_cd <- as.factor(dat1$fin_rsk_ases_grd_cd)
+
+#check confirm_rsk_ases_lvl_typ_cd
+hist(tag$confirm_rsk_ases_lvl_typ_cd)
+#code the variable as a factor
+dat1$confirm_rsk_ases_lvl_typ_cd <- as.factor(dat1$confirm_rsk_ases_lvl_typ_cd)
+
+#check tot_ast_lvl_cd
+hist(tag$tot_ast_lvl_cd)
+#code the variable as a factor
+dat1$tot_ast_lvl_cd <- as.factor(dat1$tot_ast_lvl_cd)
+
+#check pot_ast_lvl_cd
+hist(tag$pot_ast_lvl_cd)
+#code the variable as a factor
+dat1$pot_ast_lvl_cd <- as.factor(dat1$pot_ast_lvl_cd)
+
+#code "" levels as "-1"
+levels(tag$atdd_type) <- c("-1", "-1", "0", "1")
+levels(tag$deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "Z")
+levels(tag$edu_deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "F", "G", "J", "K", "L", "M", "Z")
+```
+
+modify response variable:
+
+```{r}
+#response variable
+hist(tag$ovd_30d_loan_tot_cnt)
+#default for loan + credit card 
+hist(tag$his_lng_ovd_day)
+length(which(tag$his_lng_ovd_day != 0))
+#default for credit card (customers without loan)
+hist(tag$his_lng_ovd_day[tag$loan_act_ind==0])
+
+#try to exclude customers with loan
+dat1.1 <- dat1[dat1$loan_act_ind==0,]
+length(which(dat1.1$his_lng_ovd_day > 0)) #only 3
+length(which(dat1.1$ovd_30d_loan_tot_cnt > 0)) #only 1 person
+
+#define Good as customers who never default
+dat1$good <- ifelse(dat1$his_lng_ovd_day == 0, 1, 0) #Good as 1, Bad as 0
+```
+identify our target group: married women under 35
+
+```{r}
+#investigate mrg_situ_cd
+ggplot(dat1, aes(x=mrg_situ_cd, y=age)) + geom_boxplot()
+attach(dat1)
+mean(age[mrg_situ_cd=="A" & gdr_cd == "M"])
+mean(age[mrg_situ_cd=="B" & gdr_cd == "M"])
+detach()
+#assume A = single, B = married
+
+#subset our target group
+dat.t <- subset(dat1, age<=35 & gdr_cd=="F" & mrg_situ_cd=="B", select = -c(age, gdr_cd, mrg_situ_cd))
+dim(dat.t)
+summary(dat.t)
+
+#compare characteristics with the main group
+summary(tag$dnl_mbl_bnk_ind) #99.96%
+summary(tag$dnl_bind_cmb_lif_ind) #83.61%
+summary(tag$crd_card_act_ind) #84.765%
+```
+
+Some conclusions can be drawn from this summary:
+
+- our target group is very active in digital banking: they have all downloaded the bank's app (variable dnl_mbl_bnk_ind), 90.5% of them have downloaded the special app for credit card (variable dnl_bind_cmb_lif_ind)
+
+- 85.9% of them are active credit card users (indicated by the variable crd_card_act_ind). However, only 16.4% of them have loans with CMB.
+
+- 3.85% of them have defaulted, much smaller than the proportion that defaulted in the overall dataset (7.57%)
+
+Some variables are highly skewed
+
+- bk1_cur_year_mon_avg_agn_amt_cd
+- l12mon_buy_fin_mng_whl_tms
+- l12_mon_fnd_buy_whl_tms
+- l12_mon_insu_buy_whl_tms
+- l12_mon_gld_buy_whl_tms
+
+```{r}
+#investigate some outliers in variables
+which.max(dat.t$cur_credit_cnt) #143
+dat.t[143,]
+which.max(dat.t$his_lng_ovd_day) #298
+dat.t[298,]
+
+#investigate the highly skewed variables
+skew.df <- subset(dat.t, select = c(bk1_cur_year_mon_avg_agn_amt_cd, l12mon_buy_fin_mng_whl_tms, 
+                                    l12_mon_fnd_buy_whl_tms, l12_mon_insu_buy_whl_tms, l12_mon_gld_buy_whl_tms,
+                                    pl_crd_lmt_cd, good))
+
+#combine adjacent levels with similar Weight of Evidence
+check_woe <- function(var) {
+  tab.var <- table(as.factor(var), good)
+  df.var <- as.data.frame.matrix(tab.var)
+  df.prop.var <- as.data.frame.matrix(prop.table(tab.var, 1))
+  df.var$woe <- log(df.prop.var$"1" / df.prop.var$"0")
+  return(df.var)
+}
+
+attach(skew.df)
+check_woe(bk1_cur_year_mon_avg_agn_amt_cd)
+
+check_woe(l12mon_buy_fin_mng_whl_tms)
+
+check_woe(l12_mon_fnd_buy_whl_tms)
+
+check_woe(l12_mon_insu_buy_whl_tms)
+#too few people buy insurance （8 people buy once)
+
+check_woe(l12_mon_gld_buy_whl_tms)
+#too few people buy gold (5 people buy >= 1 time)
+
+check_woe(pl_crd_lmt_cd)
+detach()
+```
+
+
+```{r}
+#drop levels
+dat.t <- droplevels(dat.t)
+
+#select variables which reflect customer background and behaviour
+dat.tf <- subset(dat.t, select = c(cur_debit_cnt, cur_credit_cnt, cur_debit_min_opn_dt_cnt, cur_credit_min_opn_dt_cnt, cur_debit_crd_lvl, hld_crd_card_grd_cd, crd_card_act_ind, l1y_crd_card_csm_amt_dlm_cd, atdd_type, perm_crd_lmt_cd, acdm_deg_cd, job_year, ic_ind, fr_or_sh_ind,
+dnl_bind_cmb_lif_ind,
+hav_car_grp_ind,
+hav_hou_grp_ind,
+l6mon_daim_aum_cd,
+tot_ast_lvl_cd,
+pot_ast_lvl_cd,
+l12mon_buy_fin_mng_whl_tms,
+l12_mon_fnd_buy_whl_tms,
+l12_mon_insu_buy_whl_tms,
+l12_mon_gld_buy_whl_tms,
+loan_act_ind,
+pl_crd_lmt_cd,
+good))
+```
+
+edu_deg_cd, acdm_deg_cd, deg_cd are similar ideas. pick acdm_deg_cd because it has fewer levels than edu_deg_cd and more even distribution than deg_cd
+
+
+II. From Initial to Final Model
+
+```{r}
+#raw model
+glm.f <- glm(good~., data=dat.tf, family="binomial")
+summary(glm.f)
+glm.prob <- predict(glm.f, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+# remove variables one by one
+glm.1 <- glm(good~ .-pot_ast_lvl_cd, data=dat.tf, family="binomial")
+summary(glm.1)
+glm.prob <- predict(glm.1, type="response")
+tab.1 <- table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+
+glm.2 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms, data=dat.tf, family="binomial")
+summary(glm.2)
+glm.prob <- predict(glm.1, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.3 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms, data=dat.tf, family="binomial")
+summary(glm.3)
+glm.prob <- predict(glm.3, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.4 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind, data=dat.tf, family="binomial")
+summary(glm.4)
+glm.prob <- predict(glm.4, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.5 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd, data=dat.tf, family="binomial")
+summary(glm.5)
+glm.prob <- predict(glm.5, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.6 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt, data=dat.tf, family="binomial")
+summary(glm.6)
+glm.prob <- predict(glm.6, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.6 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt, data=dat.tf, family="binomial")
+summary(glm.6)
+glm.prob <- predict(glm.6, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+
+glm.7 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind , data=dat.tf, family="binomial")
+summary(glm.7)
+glm.prob <- predict(glm.7, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.8 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind, data=dat.tf, family="binomial")
+summary(glm.8)
+glm.prob <- predict(glm.8, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.9 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt, data=dat.tf, family="binomial")
+summary(glm.9)
+glm.prob <- predict(glm.9, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.10 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year, data=dat.tf, family="binomial")
+summary(glm.10)
+glm.prob <- predict(glm.10, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.11 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind, data=dat.tf, family="binomial")
+summary(glm.11)
+glm.prob <- predict(glm.11, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+
+glm.12 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl, data=dat.tf, family="binomial")
+summary(glm.12)
+glm.prob <- predict(glm.12, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.13 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt, data=dat.tf, family="binomial")
+summary(glm.13)
+glm.prob <- predict(glm.13, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+ 
+glm.14 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt - hav_hou_grp_ind, data=dat.tf, family="binomial")
+summary(glm.14)
+glm.prob <- predict(glm.14, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.15 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt - hav_hou_grp_ind - l6mon_daim_aum_cd, data=dat.tf, family="binomial")
+summary(glm.15)
+glm.prob <- predict(glm.15, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.16 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt - hav_hou_grp_ind - l6mon_daim_aum_cd - hav_car_grp_ind, data=dat.tf, family="binomial")
+summary(glm.16)
+glm.prob <- predict(glm.16, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.17 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt - hav_hou_grp_ind - l6mon_daim_aum_cd - hav_car_grp_ind - cur_debit_cnt, data=dat.tf, family="binomial")
+summary(glm.17)
+glm.prob <- predict(glm.17, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+glm.18 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_buy_whl_tms - loan_act_ind - perm_crd_lmt_cd - cur_debit_min_opn_dt_cnt - crd_card_act_ind - dnl_bind_cmb_lif_ind - cur_credit_min_opn_dt_cnt - job_year - fr_or_sh_ind - cur_debit_crd_lvl - cur_credit_cnt - hav_hou_grp_ind - l6mon_daim_aum_cd - hav_car_grp_ind - cur_debit_cnt - hld_crd_card_grd_cd, data=dat.tf, family="binomial")
+summary(glm.18)
+glm.prob <- predict(glm.18, type="response")
+table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+
+# glm final model
+glm.f <- glm(good ~ l1y_crd_card_csm_amt_dlm_cd + atdd_type + acdm_deg_cd + ic_ind + tot_ast_lvl_cd + l12mon_buy_fin_mng_whl_tms + l12_mon_fnd_buy_whl_tms + pl_crd_lmt_cd, data=dat.tf, family="binomial")
+glm.f.prob <- predict(glm.f, type="response")
+table(ifelse(glm.f.prob>0.5, 1, 0), dat.tf$good)
+
+# Random Forest
+set.seed(100)
+rf.pop <- randomForest(as.factor(good) ~., data=dat.tf, mtry=5, importance=T)
+importance(rf.pop)
+varImpPlot(rf.pop, col=c("blue", "red"))
+
+rf.prob <- predict(rf.pop, dat.tf, type="prob")[,2]
+```
+
+
+We gathered the following statistics,
+
+- merchant  service charge, m = 0.8%
+  - policy paper "中国银联入网机构银行卡跨行交易收益分配办法"
+- interest rate charged per billing period, r0 = 1.5%
+  - common practice among chinese banks
+- interest rate at which lender can borrow money each period, r_f = 0.2%
+  - convert annualised interest rate for one-year treasury bonds to monthly interest rate
+- percentage final loss of balance at default on credit card, l_d =  70%
+  - according to Bank of China annual report "2019 年资本充足率报告" 
+- average purchase per period using credit card, P = 590
+  - calculated based on figures ("total amount of loans from credit card" + "no. of circulating cards") from CMB's annual report 2019
+- average repayment per period, C = 637
+  - calculated based on "profits from interest" + "total amount of loans from credit card" + "no. of circulating cards" from CMB's annual report
+- average balance per period, B = 3147
+  - calculated based on the assumption rB + P = C
+  
+```{r}
+#assumptions
+m = 0.8/100
+r0 = 1.5/100
+r_F = 0.2/100
+l_D = 70/100
+P = 590
+C = 637
+B = 3147
+N = (B+C)/C #assume this to be constant when P changes
+
+```
+
+Set interest rate 
+
+```{r}
+#present equation of expected profitability from 
+ind_exp_prof  <- function (r, p, P) {
+  P*(m-1) + P*(1+r)^(N-1)*((1 - l_D + l_D * p^N)/((1+r_F)^N))
+}
+
+avg_prof <- function (r, p_list, P) {
+  e_list = c()
+  p_opt <- ((1-m) * (1+r_F)^N / (l_D * (1+r)^(N-1)) + (l_D-1)/l_D)^(1/N)
+  for (i in p_list) {
+    if (i > p_opt) {
+      e_r <- ind_exp_prof(r, i, P)
+      e_list <- c(e_list, e_r)
+    }
+  }
+ return(mean(e_list))
+}
+
+
+avg_prof(r=r0, p_list=rf.prob, P=590) #38.8
+
+avg_prof(r=0.01, rf.prob, P=590*1.58) #38.87
+```
+
+
+
+```{r}
+
+
+```
+
+```{r}
+
+```
+
