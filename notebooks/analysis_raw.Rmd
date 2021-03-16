@@ -5,7 +5,7 @@ date: "09/02/2021"
 output: html_document
 ---
 
-```{r eval=False}
+```{r  echo=FALSE}
 library(ggplot2)
 library(glmnet)
 library(tidyverse)
@@ -367,14 +367,13 @@ We gathered the following statistics,
 ```{r}
 #assumptions
 m = 0.8/100
-r0 = 1.5/100
+r0 = 18.25/12/100
 r_F = 0.2/100
 l_D = 70/100
 P = 590
 C = 637
 B = 3147
 N = (B+C)/C #assume this to be constant when P changes
-
 ```
 
 Set interest rate 
@@ -398,16 +397,41 @@ avg_prof <- function (r, p_list, P) {
 }
 
 
-avg_prof(r=r0, p_list=rf.prob, P=590) #38.8
+avg_prof(r=r0, p_list=rf.prob, P=590) #39.4543
 
-avg_prof(r=0.01, rf.prob, P=590*1.58) #38.87
+r1 = r0 * 0.7
+avg_prof(r=r1, rf.prob, P=590*1.49) #39.52723
 ```
 
 
-
 ```{r}
+# generate a better graph
+r_seq <- seq(r1, r0, length.out=500)
+P_seq <- rep(0, 500)
+for (i in 1:500) {
+  r = r_seq[i]
+  for (perc in 0:600) {
+    if (abs(avg_prof(r, rf.prob, 590*(1 + perc/1000)) - 39.45) <= 0.1) {
+      P_seq[i] <- 590*(1 + perc/1000)
+      break
+    }
+  }
+}
+
+r_seq.plot <- c()
+P_seq.plot <- c()
+for (i in 1:500) {
+  if (P_seq[i] != 0) {
+    r_seq.plot <- c(r_seq.plot, r_seq[i])
+    P_seq.plot <- c(P_seq.plot, P_seq[i])
+  }
+}
+plot(x=r_seq.plot * 12 * 100, y=P_seq.plot * 12, type="l", xlab="annualised interest rate, %", ylab="yearly consumption")
 
 
+model.dat <- data.frame(cbind(12*100*r_seq.plot, 12*P_seq.plot))
+model.dat[which.min(model.dat$X1),]
+model.dat[250,]
 ```
 
 ```{r}
