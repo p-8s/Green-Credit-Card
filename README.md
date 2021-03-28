@@ -21,3 +21,11 @@ Structure and propose at least one Sustainable Finance related product
 We conducted qualitative and quantitative researches on ESG development in China and the credit card market. Our proposed product is a Green Credit Card which lowers the interest rate as users' greeen consumption increases. Full details can be referred to in [our report](https://github.com/p-8s/Green-Credit-Card/blob/master/Report.pdf)
 
 In our Green Credit Card profitability analysis, we modelled default risk using random forest and calculated expected profit following a model proposed by [So et al](https://www.sciencedirect.com/science/article/abs/pii/S0167923613002625). We argue that by lowering interest rate for higher consumption amount, the overall profitability level can be mainted. 
+
+## Contribution
+
+This project was completed in a team effort.
+
+Our special thanks go to [Shakeel Gavioli-Akilagun](https://github.com/Shakeel95) for his continued support and guidance throughout this project. We are grateful for the advice and kind words from [Dr Gelly Mitrodima](https://www.lse.ac.uk/Statistics/People/Dr-Gelly-Mitrodima), [Dr Yining Chen](https://www.lse.ac.uk/Statistics/People/Dr-Yining-Chen), [Mr Philip Rauber](https://info.lse.ac.uk/current-students/lse-life/about/people/philip-rauber) and Mr Aaron Trevitt.
+
+In the end, we would like to thank [Standard Chartered](https://www.sc.com/cn/en/) for organising this Challenge which provided us with a wonderful opportunity to explore the finance industry.
