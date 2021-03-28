@@ -24,8 +24,8 @@ In our Green Credit Card profitability analysis, we modelled default risk using 
 
 ## Contribution
 
-Our team consisted of [Yuhong Wu](https://www.linkedin.com/in/yuhong-wu-81851920a/), [Patricia Yin](https://www.linkedin.com/in/patricia-yin-y/), [Veritas Chen](https://www.linkedin.com/in/veritas-chen-b86b341b5/) and [Aaron Morjaria](https://www.linkedin.com/in/aaron-morjaria-5425251a7/)
+Our team consisted of [Yuhong Wu](https://www.linkedin.com/in/yuhong-wu-81851920a/), [Patricia Yin](https://www.linkedin.com/in/patricia-yin-y/), [Veritas Chen](https://www.linkedin.com/in/veritas-chen-b86b341b5/) and [Aaron Morjaria](https://www.linkedin.com/in/aaron-morjaria-5425251a7/). The collaboration has been a smooth and enjoyable one for all of us.
 
 Our special thanks go to [Shakeel Gavioli-Akilagun](https://github.com/Shakeel95) for his continued support and guidance throughout this project. We are grateful for the advice and kind words from [Dr Gelly Mitrodima](https://www.lse.ac.uk/Statistics/People/Dr-Gelly-Mitrodima), [Dr Yining Chen](https://www.lse.ac.uk/Statistics/People/Dr-Yining-Chen), [Mr Philip Rauber](https://info.lse.ac.uk/current-students/lse-life/about/people/philip-rauber) and Mr Aaron Trevitt.
 
-In the end, we would like to thank [Standard Chartered](https://www.sc.com/cn/en/) for organising this Challenge which provided us with a wonderful opportunity to explore the finance industry.
+In the end, we would like to thank [Standard Chartered](https://www.sc.com/cn/en/) for organising this Challenge which provided us with a wonderful opportunity to explore the financial services industry.
