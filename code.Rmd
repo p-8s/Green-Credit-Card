@@ -1,5 +1,5 @@
 ---
-title: "train_tag"
+title: "Credit Card Profitability Analysis"
 author: "Patricia Yin"
 date: "09/02/2021"
 output: html_document
@@ -13,99 +13,74 @@ library(randomForest)
 library(ROCR)
 ```
 
-
 # I. Exploratory Data Analysis
-
-load and view train_tag.csv dataset provided by a Chinese bank in a modelling competition.
-
-```{r}
-tag <- read.csv("../data/train_tag.csv")
-dim(tag)[1]
-colnames(tag)
-rdm.index <- sample(dim(tag)[1], size=6)
-tag[rdm.index,]
-summary(tag)
-```
 
 ## 1.1 Data cleaning and prepocessing
 
+### prepare predicting variables:
+
 ```{r}
-#put categorical variables as fators
+tag <- read.csv("data/train_tag.csv")
+#recognise categorical variables
 tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)] <- lapply(tag[c(2,3,5,6,7,8,10,11,12,13,14,15,16,18,30,35,37)], as.factor)
-```
 
-columns with -1:
-frs_agn_dt_cnt, fin_rsk_ases_grd_cd, confirm_rsk_ases_lvl_typ_cd, tot_ast_lvl_cd,   pot_ast_lvl_cd, hld_crd_card_grd_cd, perm_crd_lmt_cd,  cur_credit_min_opn_dt_cnt
-
-Treat them as missing values and remove rows with -1 in any columns from the dataset
-
-```{r}
-#try to remove -1
-colnames(tag)
-neg_col_index <- c(17, 19, 20, 23, 24, 34, 38, 42)
-dat <- tag
-for (i in 1:8) {
-  dat <- subset(dat, dat[neg_col_index[i]] != -1)
-}
-
-dim(dat) 
-dim(tag)
-```
-
-The reduced dataset is only 1/10 of the original one. Try to investigate why -1 was coded
-
-```{r}
-#check cur_credit_min_opn_dt_cnt
+#remove level -1 in some categorical variables which only have a few entries
 hist(tag$cur_credit_min_opn_dt_cnt)
 summary(tag$cur_credit_cnt)
-#remove rows with -1 in cur_credit_min_opn_dt_cnt
-dat1 <- subset(tag, cur_credit_min_opn_dt_cnt != -1)
+dat1 <- subset(tag, cur_credit_min_opn_dt_cnt != -1 & hld_crd_card_grd_cd != -1 & perm_crd_lmt_cd != -1)
 
-#check hld_crd_card_grd_cd
-hist(tag$hld_crd_card_grd_cd)
-#remove -1 in hld_crd_card_grd_cd
-dat1 <- subset(dat1, hld_crd_card_grd_cd != -1)
-
-#check perm_crd_lmt_cd
-hist(tag$perm_crd_lmt_cd)
-#remove -1 in perm_crd_lmt_cd
-dat1 <- subset(dat1, perm_crd_lmt_cd != -1)
-
-#check frs_agn_dt_cnt
-hist(tag$frs_agn_dt_cnt)
-summary(tag$l6mon_agn_ind)
-length(which(tag$frs_agn_dt_cnt == -1)) #=18588
-length(which(tag$frs_agn_dt_cnt == -1 & tag$l6mon_agn_ind == 0)) #=18528
-#remove frs_agn_dt_cnt
+#check frs_agn_dt_cnt because of too many empty values
 dat1 <- subset(dat1, select = - frs_agn_dt_cnt)
 
-#check fin_rsk_ases_grd_cd
-hist(tag$fin_rsk_ases_grd_cd)
-#code the variable as a factor
+#convert some continuous variables to be categorical according to their meanings
 dat1$fin_rsk_ases_grd_cd <- as.factor(dat1$fin_rsk_ases_grd_cd)
-
-#check confirm_rsk_ases_lvl_typ_cd
-hist(tag$confirm_rsk_ases_lvl_typ_cd)
-#code the variable as a factor
 dat1$confirm_rsk_ases_lvl_typ_cd <- as.factor(dat1$confirm_rsk_ases_lvl_typ_cd)
-
-#check tot_ast_lvl_cd
-hist(tag$tot_ast_lvl_cd)
-#code the variable as a factor
 dat1$tot_ast_lvl_cd <- as.factor(dat1$tot_ast_lvl_cd)
-
-#check pot_ast_lvl_cd
-hist(tag$pot_ast_lvl_cd)
-#code the variable as a factor
 dat1$pot_ast_lvl_cd <- as.factor(dat1$pot_ast_lvl_cd)
 
-#code "" levels as "-1"
+#code "" levels as "-1" indicating missing values
 levels(tag$atdd_type) <- c("-1", "-1", "0", "1")
 levels(tag$deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "Z")
 levels(tag$edu_deg_cd) <- c("-1",  "~", "A", "B", "C", "D", "E", "F", "G", "J", "K", "L", "M", "Z")
 ```
 
-modify response variable:
+
+### investigate highly skewed variables
+
+```{r}
+#investigate some outliers in variables
+which.max(dat.t$cur_credit_cnt) #143
+dat.t[143,]
+which.max(dat.t$his_lng_ovd_day) #298
+dat.t[298,]
+
+#investigate the highly skewed variables
+skew.df <- subset(dat.t, select = c(bk1_cur_year_mon_avg_agn_amt_cd, l12mon_buy_fin_mng_whl_tms, 
+                                    l12_mon_fnd_buy_whl_tms, l12_mon_insu_buy_whl_tms, l12_mon_gld_buy_whl_tms,
+                                    pl_crd_lmt_cd, good))
+
+#try to combine adjacent levels with similar Weight of Evidence
+check_woe <- function(var) {
+  tab.var <- table(as.factor(var), good)
+  df.var <- as.data.frame.matrix(tab.var)
+  df.prop.var <- as.data.frame.matrix(prop.table(tab.var, 1))
+  df.var$woe <- log(df.prop.var$"1" / df.prop.var$"0")
+  return(df.var)
+}
+
+attach(skew.df)
+check_woe(bk1_cur_year_mon_avg_agn_amt_cd)
+check_woe(l12mon_buy_fin_mng_whl_tms)
+check_woe(l12_mon_fnd_buy_whl_tms)
+check_woe(l12_mon_insu_buy_whl_tms)#too few people buy insurance （8 people buy once)
+check_woe(l12_mon_gld_buy_whl_tms)#too few people buy gold (5 people buy >= 1 time)
+check_woe(pl_crd_lmt_cd)
+detach()
+```
+
+No actions are taken to combine levels with similar WOE because too few people in certain levels.
+
+### modify response variable:
 
 ```{r}
 #response variable
@@ -124,7 +99,10 @@ length(which(dat1.1$ovd_30d_loan_tot_cnt > 0)) #only 1 person
 #define Good as customers who never default
 dat1$good <- ifelse(dat1$his_lng_ovd_day == 0, 1, 0) #Good as 1, Bad as 0
 ```
-identify our target group: married women under 35
+
+The dataset does not specify whether the default is on credit card or other loans. To deal with this, we attempted to remove all users who have other forms of loans so that only credit card users remained in the dataset and the default variable would only reflect users who have defaulted on credit card before. However, this reduced the size of our dataset significantly. The Bad accounts were reduced to 1. Thus, we decided to generalise our definition of a Bad account to be a user who have defaulted on any kind of loan before. 
+
+### finalise dataset for modelling
 
 ```{r}
 #investigate mrg_situ_cd
@@ -137,71 +115,6 @@ detach()
 
 #subset our target group
 dat.t <- subset(dat1, age<=35 & gdr_cd=="F" & mrg_situ_cd=="B", select = -c(age, gdr_cd, mrg_situ_cd))
-dim(dat.t)
-summary(dat.t)
-
-#compare characteristics with the main group
-summary(tag$dnl_mbl_bnk_ind) #99.96%
-summary(tag$dnl_bind_cmb_lif_ind) #83.61%
-summary(tag$crd_card_act_ind) #84.765%
-```
-
-Some conclusions can be drawn from this summary:
-
-- our target group is very active in digital banking: they have all downloaded the bank's app (variable dnl_mbl_bnk_ind), 90.5% of them have downloaded the special app for credit card (variable dnl_bind_cmb_lif_ind)
-
-- 85.9% of them are active credit card users (indicated by the variable crd_card_act_ind). However, only 16.4% of them have loans with CMB.
-
-- 3.85% of them have defaulted, much smaller than the proportion that defaulted in the overall dataset (7.57%)
-
-Some variables are highly skewed
-
-- bk1_cur_year_mon_avg_agn_amt_cd
-- l12mon_buy_fin_mng_whl_tms
-- l12_mon_fnd_buy_whl_tms
-- l12_mon_insu_buy_whl_tms
-- l12_mon_gld_buy_whl_tms
-
-```{r}
-#investigate some outliers in variables
-which.max(dat.t$cur_credit_cnt) #143
-dat.t[143,]
-which.max(dat.t$his_lng_ovd_day) #298
-dat.t[298,]
-
-#investigate the highly skewed variables
-skew.df <- subset(dat.t, select = c(bk1_cur_year_mon_avg_agn_amt_cd, l12mon_buy_fin_mng_whl_tms, 
-                                    l12_mon_fnd_buy_whl_tms, l12_mon_insu_buy_whl_tms, l12_mon_gld_buy_whl_tms,
-                                    pl_crd_lmt_cd, good))
-
-#combine adjacent levels with similar Weight of Evidence
-check_woe <- function(var) {
-  tab.var <- table(as.factor(var), good)
-  df.var <- as.data.frame.matrix(tab.var)
-  df.prop.var <- as.data.frame.matrix(prop.table(tab.var, 1))
-  df.var$woe <- log(df.prop.var$"1" / df.prop.var$"0")
-  return(df.var)
-}
-
-attach(skew.df)
-check_woe(bk1_cur_year_mon_avg_agn_amt_cd)
-
-check_woe(l12mon_buy_fin_mng_whl_tms)
-
-check_woe(l12_mon_fnd_buy_whl_tms)
-
-check_woe(l12_mon_insu_buy_whl_tms)
-#too few people buy insurance （8 people buy once)
-
-check_woe(l12_mon_gld_buy_whl_tms)
-#too few people buy gold (5 people buy >= 1 time)
-
-check_woe(pl_crd_lmt_cd)
-detach()
-```
-
-
-```{r}
 #drop levels
 dat.t <- droplevels(dat.t)
 
@@ -225,7 +138,30 @@ good))
 edu_deg_cd, acdm_deg_cd, deg_cd are similar ideas. pick acdm_deg_cd because it has fewer levels than edu_deg_cd and more even distribution than deg_cd
 
 
-II. From Initial to Final Model
+## 1.2 Target group analysis
+
+```{r}
+summary(dat.tf)
+
+#compare characteristics with the main group
+summary(tag$dnl_mbl_bnk_ind) #99.96%
+summary(tag$dnl_bind_cmb_lif_ind) #83.61%
+summary(tag$crd_card_act_ind) #84.765%
+```
+
+Some conclusions can be drawn from this summary:
+
+- our target group is very active in digital banking: they have all downloaded the bank's app (variable dnl_mbl_bnk_ind), 90.5% of them have downloaded the special app for credit card (variable dnl_bind_cmb_lif_ind)
+
+- 85.9% of them are active credit card users (indicated by the variable crd_card_act_ind). However, only 16.4% of them have loans with CMB.
+
+- 3.85% of them have defaulted, much smaller than the proportion that defaulted in the overall dataset (7.57%)
+
+# II. From Initial to Final Model
+
+## 2.1 Default risk
+
+### glm model
 
 ```{r}
 #raw model
@@ -234,7 +170,7 @@ summary(glm.full)
 glm.prob <- predict(glm.full, type="response")
 table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
 
-# remove variables one by one
+# remove non significant variables one by one
 glm.1 <- glm(good~ .-pot_ast_lvl_cd, data=dat.tf, family="binomial")
 summary(glm.1)
 glm.prob <- predict(glm.1, type="response")
@@ -332,7 +268,11 @@ glm.18 <- glm(good~ .-pot_ast_lvl_cd - l12_mon_gld_buy_whl_tms - l12_mon_insu_bu
 summary(glm.18)
 glm.prob <- predict(glm.18, type="response")
 table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
+```
 
+### glm performance
+
+```{r}
 # glm final model
 glm.f <- glm(good ~ l1y_crd_card_csm_amt_dlm_cd + atdd_type + acdm_deg_cd + ic_ind + tot_ast_lvl_cd + l12mon_buy_fin_mng_whl_tms + l12_mon_fnd_buy_whl_tms + pl_crd_lmt_cd, data=dat.tf, family="binomial")
 summary(glm.f)
@@ -344,7 +284,11 @@ roc.glm <- performance(prediction.glm, measure="tpr", x.measure="fpr")
 plot(roc.glm, lwd=2, colorkey=T, colorize=T, main="ROC curve - Logistic")
 auc.glm <- performance(prediction.glm, "auc")
 auc.glm <- as.numeric(auc.glm@y.values)
+```
 
+### random forest model 
+
+```{r}
 # Random Forest
 set.seed(100)
 rf.pop <- randomForest(as.factor(good) ~., data=dat.tf, mtry=5, importance=T)
@@ -360,21 +304,11 @@ auc.rf <- performance(prediction.rf, "auc")
 auc.rf <- as.numeric(auc.rf@y.values)
 ```
 
+### random forest performance 
+
 ```{r}
 #test performance of random forest through cross validation
-test.index <- sample(dim(dat.tf)[1], 185)
-dat_test.tf <- dat.tf[test.index,]
-dat_train.tf <- dat.tf[-test.index,]
-
-set.seed(1000)
-rf.pop <- randomForest(as.factor(good) ~., data=dat_train.tf, mtry=5, importance=T)
-
-rf.prob_train <- predict(rf.pop, dat_train.tf, type="prob")[,2]
-prediction.rf_train <- prediction(rf.prob_train, dat_train.tf$good)
-roc.rf_train <- performance(prediction.rf_train, measure="tpr", x.measure="fpr")
-plot(roc.rf_train, lwd=2, colorkey=T, colorize=T, main="ROC curve - Random Forest on Training Data")
-auc.rf_train <- performance(prediction.rf_train, "auc")
-auc.rf_train <- as.numeric(auc.rf_train@y.values)
+dat_test.tf <- read.csv("data/test_tag_cleaned.csv")  #the test dataset has gone through the above cleaning process
 
 #test performance of random forest on test data
 rf.prob_test <- predict(rf.pop, dat_test.tf, type="prob")[,2]
@@ -384,6 +318,8 @@ plot(roc.rf_test, lwd=2, colorkey=T, colorize=T, main="ROC curve - Random Forest
 auc.rf_test <- performance(prediction.rf_test, "auc")
 auc.rf_test <- as.numeric(auc.rf_test@y.values)
 ```
+
+## 2.2 Profitability 
 
 We gathered the following statistics,
 
@@ -414,7 +350,6 @@ B = 3147
 N = (B+C)/C #assume this to be constant when P changes
 ```
 
-Set interest rate 
 
 ```{r}
 #present equation of expected profitability from 
@@ -434,16 +369,13 @@ avg_prof <- function (r, p_list, P) {
  return(mean(e_list))
 }
 
-
+# calculate current level of expected profitability of a potential customer
 avg_prof(r=r0, p_list=rf.prob, P=590) #39.4543
-
-r1 = r0 * 0.7
-avg_prof(r=r1, rf.prob, P=590*1.49) #39.52723
 ```
 
 
 ```{r}
-# generate a better graph
+# generate a graph for relationship between interest rate and consumption level
 r_seq <- seq(r1, r0, length.out=500)
 P_seq <- rep(0, 500)
 for (i in 1:500) {
@@ -465,14 +397,4 @@ for (i in 1:500) {
   }
 }
 plot(x=r_seq.plot * 12 * 100, y=P_seq.plot * 12, type="l", xlab="annualised interest rate, %", ylab="yearly consumption")
-
-
-model.dat <- data.frame(cbind(12*100*r_seq.plot, 12*P_seq.plot))
-model.dat[which.min(model.dat$X1),]
-model.dat[250,]
 ```
-
-```{r}
-
-```
-
