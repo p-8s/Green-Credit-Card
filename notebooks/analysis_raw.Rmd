@@ -10,6 +10,7 @@ library(ggplot2)
 library(glmnet)
 library(tidyverse)
 library(randomForest)
+library(ROCR)
 ```
 
 
@@ -228,9 +229,9 @@ II. From Initial to Final Model
 
 ```{r}
 #raw model
-glm.f <- glm(good~., data=dat.tf, family="binomial")
-summary(glm.f)
-glm.prob <- predict(glm.f, type="response")
+glm.full <- glm(good~., data=dat.tf, family="binomial")
+summary(glm.full)
+glm.prob <- predict(glm.full, type="response")
 table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
 
 # remove variables one by one
@@ -334,8 +335,15 @@ table(ifelse(glm.prob>0.5, 1, 0), dat.tf$good)
 
 # glm final model
 glm.f <- glm(good ~ l1y_crd_card_csm_amt_dlm_cd + atdd_type + acdm_deg_cd + ic_ind + tot_ast_lvl_cd + l12mon_buy_fin_mng_whl_tms + l12_mon_fnd_buy_whl_tms + pl_crd_lmt_cd, data=dat.tf, family="binomial")
+summary(glm.f)
 glm.f.prob <- predict(glm.f, type="response")
 table(ifelse(glm.f.prob>0.5, 1, 0), dat.tf$good)
+
+prediction.glm <- prediction(glm.f.prob, dat.tf$good)
+roc.glm <- performance(prediction.glm, measure="tpr", x.measure="fpr")
+plot(roc.glm, lwd=2, colorkey=T, colorize=T, main="ROC curve - Logistic")
+auc.glm <- performance(prediction.glm, "auc")
+auc.glm <- as.numeric(auc.glm@y.values)
 
 # Random Forest
 set.seed(100)
@@ -344,8 +352,38 @@ importance(rf.pop)
 varImpPlot(rf.pop, col=c("blue", "red"))
 
 rf.prob <- predict(rf.pop, dat.tf, type="prob")[,2]
+
+prediction.rf <- prediction(rf.prob, dat.tf$good)
+roc.rf <- performance(prediction.rf, measure="tpr", x.measure="fpr")
+plot(roc.rf, lwd=2, colorkey=T, colorize=T, main="ROC curve - Random Forest")
+auc.rf <- performance(prediction.rf, "auc")
+auc.rf <- as.numeric(auc.rf@y.values)
 ```
 
+```{r}
+#test performance of random forest through cross validation
+test.index <- sample(dim(dat.tf)[1], 185)
+dat_test.tf <- dat.tf[test.index,]
+dat_train.tf <- dat.tf[-test.index,]
+
+set.seed(1000)
+rf.pop <- randomForest(as.factor(good) ~., data=dat_train.tf, mtry=5, importance=T)
+
+rf.prob_train <- predict(rf.pop, dat_train.tf, type="prob")[,2]
+prediction.rf_train <- prediction(rf.prob_train, dat_train.tf$good)
+roc.rf_train <- performance(prediction.rf_train, measure="tpr", x.measure="fpr")
+plot(roc.rf_train, lwd=2, colorkey=T, colorize=T, main="ROC curve - Random Forest on Training Data")
+auc.rf_train <- performance(prediction.rf_train, "auc")
+auc.rf_train <- as.numeric(auc.rf_train@y.values)
+
+#test performance of random forest on test data
+rf.prob_test <- predict(rf.pop, dat_test.tf, type="prob")[,2]
+prediction.rf_test <- prediction(rf.prob_test, dat_test.tf$good)
+roc.rf_test <- performance(prediction.rf_test, measure="tpr", x.measure="fpr")
+plot(roc.rf_test, lwd=2, colorkey=T, colorize=T, main="ROC curve - Random Forest on Testing Data")
+auc.rf_test <- performance(prediction.rf_test, "auc")
+auc.rf_test <- as.numeric(auc.rf_test@y.values)
+```
 
 We gathered the following statistics,
 
