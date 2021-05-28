@@ -20,7 +20,7 @@ Structure and propose at least one Sustainable Finance related product
 
 We conducted qualitative and quantitative researches on ESG development in China and the credit card market. Our proposed product is a Green Credit Card which lowers the interest rate as users' greeen consumption increases. Full details can be referred to in [our report](https://github.com/p-8s/Green-Credit-Card/blob/master/Report.pdf).
 
-In our Green Credit Card profitability analysis, we modelled default risk using random forest and calculated expected profit following a model proposed by [So et al](https://www.sciencedirect.com/science/article/abs/pii/S0167923613002625). We argue that by lowering interest rate for higher consumption amount, the overall profitability level can be mainted. 
+In our Green Credit Card profitability analysis, we modelled default risk using random forest and calculated expected profit following a model proposed by [So et al](https://www.sciencedirect.com/science/article/abs/pii/S0167923613002625). We argue that by lowering interest rate for higher consumption amount, the overall profitability level can be maintained. 
 
 ## Contribution
 
